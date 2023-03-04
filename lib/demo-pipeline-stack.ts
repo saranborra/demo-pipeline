@@ -9,6 +9,7 @@ export class DemoPipelineStack extends cdk.Stack {
         pipelineName: "DemoPipeline",
         synth: new ShellStep("Synth", {
             input: CodePipelineSource.gitHub("saranborra/demo-pipeline", "main"),
+            installCommands: ['npm i -g npm@latest'],
             commands: ["npm ci", "npm run-build", "npm cdk synth"]
         })
     }
