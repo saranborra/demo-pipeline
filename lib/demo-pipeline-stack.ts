@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import {CodePipeline, CodePipelineSource, ShellStep } FROM 'aws-cdk-lib/pipelines';
+import {CodePipeline, CodePipelineSource, ShellStep } from 'aws-cdk-lib/pipelines';
 
 export class DemoPipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
