@@ -8,11 +8,11 @@ export class DemoPipelineStack extends Stack {
     super(scope, id, props);
 
     const pipeline = new CodePipeline(this, "Pipeline", {
+        installCommands: ['npm i -g npm@latest'],
         pipelineName: "DemoPipeline",
         crossAccountKeys: true, //multi-account deployment
         synth: new ShellStep("Synth", {
             input: CodePipelineSource.gitHub("saranborra/demo-pipeline", "main"),
-            installCommands: ['npm i -g npm@latest'],
             commands: ["npm ci", "npm run build", "npx cdk synth"],
         }),
     });
