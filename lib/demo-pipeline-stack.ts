@@ -3,8 +3,8 @@ import { Construct } from 'constructs';
 import { CodePipeline, CodePipelineSource, ShellStep } from 'aws-cdk-lib/pipelines';
 import { DemoPipelineAppStage } from "./demo-app-stage";
 
-export class DemoPipelineStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+export class DemoPipelineStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
     const pipeline = new CodePipeline(this, "Pipeline", {
         pipelineName: "DemoPipeline",
@@ -17,7 +17,7 @@ export class DemoPipelineStack extends cdk.Stack {
     });
     pipeline.addStage(
         newDemoPipelineAppStage(this, "test",{
-            env:{account:"", region: "us-east-2"},
+            env:{account:"096721594425", region: "us-east-2"},
         })
     );
     }
