@@ -8,7 +8,7 @@ export class DemoLambdaStack extends Stack{
 		super(scope, id, props);
 
 		const index = new Function (this, "LambdaFunction", {
-			runtime: Runtime.python3.9,
+			runtime: Runtime.PYTHON_3_9,
 			code: Code. fromAsset("lambda"),
 			handler: "index.handler",
 			environment:{
