@@ -1,0 +1,408 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template for CustomerDetails code pipeline creation
+
+Parameters:
+  # StackName:
+  #   Description: Name of the Stack
+  #   Type: String
+  #   Default: OIL-api-CustomerDetails-codepipeline
+
+  # OILApiCustomerDetailsProject:
+  #   Description: Code Pipeline for OIL API CustomerDetails
+  #   Type: String
+  #   Default: OIL-api-CustomerDetails
+  Prefix:
+    Type: String
+    Default: OILApiCustomerDetails
+
+  OILApiCustomerDetailsStagingContainerBuildProjectName:
+    Description: CI CodeBuild Project Name
+    Type: String
+    Default: OILApiCustomerDetailsCodeBuildCDBackend
+
+  OILApiCustomerDetailsS3BucketName:
+    Description: Type of this BacketName.
+    Type: String
+    Default: oilapi-customer-details-cp-bucket
+
+  OILApiCustomerDetailsRepo:
+    Description: Code Commit repo that the Code Pipeline will use as source
+    Type: AWS::SSM::Parameter::Value<String>
+    # Default: OILApiCustomerDetails_repo
+    Default: Oriental-Api-Repo-CustomerDetails
+
+  OILApiCustomerDetailsBranch:
+    Description: Branch of the repo which will be deployed
+    Type: String
+    Default: dev
+
+  OILApiCustomerDetailsVpcName:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Default: "oriental-lambda-vpc"
+
+  OILApiCustomerDetailsSubnet1:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: oriental-lambda-vpc-subnet-1
+  
+  OILApiCustomerDetailsSubnet2:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: oriental-lambda-vpc-subnet-2
+  
+  OILApiCustomerDetailsSecurityGroup:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: oriental-lambda-vpc-securitygroup
+
+Resources:
+  OILApiCustomerDetailsCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: OILApiCustomerDetailsS3BucketForCodePipeline
+    Properties:
+      # Name: OILApiCustomerDetailsCodePipeline
+      Name: !Sub ${Prefix}CodePipeline
+      RoleArn: arn:aws:iam::125276589957:role/OIL_code_pipeline_role
+      Stages:
+        # - Name: OILApiCustomerDetailsSourceStage
+        - Name: !Sub ${Prefix}SourceStage
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: "1"
+              OutputArtifacts:
+                # - Name: OILApiCustomerDetailsSourceArtifact
+                - Name: !Sub ${Prefix}SourceArtifact
+              Configuration:
+                PollForSourceChanges: 'false'
+                RepositoryName: !Ref OILApiCustomerDetailsRepo
+                BranchName: !Ref OILApiCustomerDetailsBranch
+              # RunOrder: 1
+        - Name: !Sub ${Prefix}BuildStage
+          Actions:
+            - Name: BuildAction
+              InputArtifacts:
+                # - Name: OILApiCustomerDetailsSourceArtifact
+                - Name: !Sub ${Prefix}SourceArtifact
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              OutputArtifacts:
+                # - Name: OILApiCustomerDetailsBuildArtifact
+                - Name: !Sub ${Prefix}BuildArtifact
+              Configuration:
+                ProjectName: !Ref OILApiCustomerDetailsStagingBuildContainer
+        - Name: !Sub ${Prefix}DeployStage
+          Actions:
+            - Name: DeployAction
+              InputArtifacts:
+                - Name: !Sub ${Prefix}BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                # Provider: CodeDeploy
+                Provider: CloudFormation
+              # Configuration:
+              #   ApplicationName: !Ref OILApiCustomerDetailsCodeDeployApplication
+              #   DeploymentGroupName: !Ref OILApiCustomerDetailsCodeDeployGroup
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                StackName: !Sub ${Prefix}-stack
+                # RoleArn: arn:aws:iam::125276589957:role/OIL_cf_lambda_apigw
+                RoleArn: !GetAtt OILApiCustomerDetailsCloudFormationRole.Arn
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND,CAPABILITY_NAMED_IAM
+                TemplatePath: !Sub ${Prefix}BuildArtifact::packaged.yaml
+                # TemplatePath: !Sub ${OILApiCustomerDetailsS3BucketName}::stack-template::packaged.yaml
+              # RunOrder: 2
+      ArtifactStore:
+        Location: !Ref OILApiCustomerDetailsS3BucketName
+        Type: S3
+
+  OILApiCustomerDetailsCloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 
+        Fn::Join:
+        - '-'
+        - - Ref: Prefix
+          - CloudFormation
+          - role
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchEventsFullAccess
+        - arn:aws:iam::aws:policy/IAMFullAccess
+      PermissionsBoundary: arn:aws:iam::125276589957:policy/oil-boundary-architect
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+
+  OILApiCustomerDetailsCloudFormationRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: 
+        Fn::Join: 
+        - '-'
+        - - Ref: Prefix
+          - CloudFormation
+          - policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+            - codebuild:*
+            Resource: 
+              - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action:
+            - codedeploy:*
+            Resource: 
+              - !Sub 'arn:aws:codedeploy:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action:
+            - codepipeline:*
+            Resource: 
+              - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action:
+            - codecommit:GitPull
+            Resource: 
+              - !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:*'
+          # - Effect: Allow
+          #   Action:
+          #   - ssm:DescribeParameters
+          #   Resource: "*"
+          - Effect: Allow
+            Action:
+            - ssm:DescribeParameters
+            - ssm:GetParameters
+            - ssm:GetParameter
+            - ssm:GetParametersByPath
+            - ssm:PutParameter
+            - ssm:DeleteParameter
+            - ssm:DeleteParameters
+            Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*'
+          - Effect: Allow
+            Action:
+            - s3:GetBucketAcl
+            - s3:PutObject
+            - s3:GetObject
+            - s3:GetBucketLocation
+            - s3:GetObjectVersion
+            Resource: 
+              - '*'
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:CreateLogGroup
+            - logs:PutLogEvents
+            Resource: 
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+      Roles: 
+        - !Ref OILApiCustomerDetailsCloudFormationRole
+
+  OILApiCustomerDetailsS3BucketForCodePipeline:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${OILApiCustomerDetailsS3BucketName}
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+
+  OILApiCustomerDetailsStagingBuildContainer:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref OILApiCustomerDetailsStagingContainerBuildProjectName
+      Source:
+        Type: CODEPIPELINE
+        GitCloneDepth: 1
+        # BuildSpec: !Sub ${OILApiCustomerDetailsBranch}/buildspec.yaml
+      Environment:
+        PrivilegedMode: True
+        Type: LINUX_CONTAINER
+        # Image: aws/codebuild/standard:2.0
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        ComputeType: BUILD_GENERAL1_SMALL
+      # ServiceRole: arn:aws:iam::125276589957:role/OIL_code_pipeline_role
+      ServiceRole: !GetAtt OILApiCustomerDetailsStagingBuildContainerRole.Arn
+      VpcConfig:
+        VpcId: !Ref OILApiCustomerDetailsVpcName
+        Subnets:
+        - Ref: OILApiCustomerDetailsSubnet1
+        - Ref: OILApiCustomerDetailsSubnet2
+        SecurityGroupIds:
+        - Ref: OILApiCustomerDetailsSecurityGroup
+      Artifacts:
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub ${OILApiCustomerDetailsStagingContainerBuildProjectName}-CloudWatchLogs-BuildLogGroup-Name
+
+  OILApiCustomerDetailsStagingBuildContainerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 
+        Fn::Join:
+        - '-'
+        - - Ref: Prefix
+          - StagingBuildContainer
+          - role
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      PermissionsBoundary: arn:aws:iam::125276589957:policy/oil-boundary-architect
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action: sts:AssumeRole
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codecommit.amazonaws.com
+            Action: sts:AssumeRole
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+
+  OILApiCustomerDetailsStagingBuildContainerRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: 
+        Fn::Join: 
+        - '-'
+        - - Ref: Prefix
+          - StagingBuildContainer
+          - policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+            - codecommit:GetCommit
+            - codecommit:GetBranch
+            - codecommit:GitPull
+            - codecommit:GetPullRequest
+            Resource: !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:*'
+      Roles: 
+        - !Ref OILApiCustomerDetailsStagingBuildContainerRole
+
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - 'CodeCommit Repository State Change'
+        resources:
+          - !Join [ '', [ 'arn:aws:codecommit:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref OILApiCustomerDetailsRepo ] ]
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - !Ref OILApiCustomerDetailsBranch
+      Targets:
+        - 
+          Arn: 
+            !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref OILApiCustomerDetailsCodePipeline ] ]
+          RoleArn: !GetAtt EventRole.Arn
+          Id: !Sub codepipeline-${Prefix}
+
+  EventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 
+        Fn::Join:
+        - '-'
+        - - Ref: Prefix
+          - event
+          - role
+      PermissionsBoundary: arn:aws:iam::125276589957:policy/oil-boundary-architect
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+
+  EventRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:    
+      # Policies:
+      #   -
+      # PolicyName: OIL-pipeline-execution
+      PolicyName: 
+        Fn::Join:
+        - '-'
+        - - Ref: Prefix
+          - event
+          - policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action: codepipeline:StartPipelineExecution
+            Resource: !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref OILApiCustomerDetailsCodePipeline ] ]
+      Roles:
+      - Ref: EventRole
+  # OILApiCustomerDetailsCodeDeployApplication:
+  #   Type: AWS::CodeDeploy::Application
+  #   # Properties:
+  #     # ApplicationName:
+  #     # ComputePlatform: Lambda
+  #     # Tags:
+
+  # OILApiCustomerDetailsCodeDeployGroup:
+  #   Type: AWS::CodeDeploy::DeploymentGroup
+  #   Properties:
+  #     ApplicationName: !Ref OILApiCustomerDetailsCodeDeployApplication
+  #     # AutoRollbackConfiguration: 
+  #     #   Events: 
+  #     #     - DEPLOYMENT_FAILURE
+  #     #     - DEPLOYMENT_STOP_ON_REQUEST
+  #     # BlueGreenDeploymentConfiguration:
+  #     #   DeploymentReadyOption: 
+  #     #   GreenFleetProvisioningOption:
+  #     #   TerminateBlueInstancesOnDeploymentSuccess: 
+  #     ServiceRoleArn: arn:aws:iam::125276589957:role/OIL_code_pipeline_role
+  #     # Tags:
